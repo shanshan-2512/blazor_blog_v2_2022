@@ -1,1 +1,1 @@
-# blazor_blog_v2_2022
+# blazor-blog-v2-2022

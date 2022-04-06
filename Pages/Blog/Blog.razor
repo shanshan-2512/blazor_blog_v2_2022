@@ -1,0 +1,113 @@
+﻿@page "/blog"
+@using Models
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Identity
+
+
+@inject AuthenticationStateProvider authState
+@inject IDbContextFactory<ApplicationDbContext> CtxFactory
+
+<PageTitle>Blog</PageTitle>
+
+<h3>Blog</h3>
+
+
+@if (User != null && User.IsAuthenticated)
+{
+
+	<input type="text" placeholder="Title" @bind="title" />
+	<input type="text" placeholder="Content" @bind="content" />
+	<button @onclick="AddEntryAsync">Add Entry</button>
+}
+
+@foreach (var entry in blog)
+{
+	<BlogEntryView Entry="@entry" OnDelete="@DeleteAsync" />
+}
+
+
+
+@code {
+
+	private List<BlogEntry> blog = new List<BlogEntry>();
+
+	private string? title, content;
+
+
+	private System.Security.Principal.IIdentity? User;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await updateBlogEntriesAsync();
+
+		var authStateService = await authState.GetAuthenticationStateAsync();
+		if (authStateService != null)
+		{
+			User = authStateService.User.Identity;
+		}
+
+	}
+
+	public async Task DeleteAsync(BlogEntry entry)
+	{
+		if (User != null && User.IsAuthenticated)
+		{
+			using var ctx = await CtxFactory.CreateDbContextAsync();
+
+			if (ctx.Blog != null)
+			{
+				ctx.Blog.Remove(entry);
+				await ctx.SaveChangesAsync();
+				await updateBlogEntriesAsync();
+			}
+		}
+	}
+
+	public async Task updateBlogEntriesAsync()
+	{
+		blog.Clear();
+		using var ctx = await CtxFactory.CreateDbContextAsync();
+
+		if (ctx.Blog != null)
+		{
+			blog.AddRange(
+			await ctx.Blog
+			.Include(u => u.User)
+			.OrderByDescending(be => be.TimePosted)
+			.ToListAsync()
+			);
+		}
+	}
+
+	private async void AddEntryAsync()
+	{
+		if (User != null && User.IsAuthenticated && !string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(content))
+		{
+			var be = new BlogEntry { Title = title, Content = content, TimePosted = DateTime.Now };
+
+
+			using var ctx = await CtxFactory.CreateDbContextAsync();
+
+			if (ctx.Accounts != null && ctx.Blog != null)
+			{
+				var userInstance = await ctx.Accounts
+				.Where(a => a.UserName == User.Name)
+				.FirstOrDefaultAsync<IdentityUser>();
+
+				be.User = userInstance;
+
+				await ctx.Blog.AddAsync(be);
+
+				if (await ctx.SaveChangesAsync() > 0)
+				{
+					await updateBlogEntriesAsync();
+					//blog.Add(be);
+
+					//blog.Sort();
+					title = "";
+					content = string.Empty;
+				}
+			}
+		}
+	}
+}
